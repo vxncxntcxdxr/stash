@@ -195,6 +195,19 @@ export const SceneDuplicateChecker: React.FC = () => {
     });
   };
 
+  const findSmallestScene = (group: GQL.SlimSceneDataFragment[]) => {
+    // Get maximum file size of a scene
+    const totalSize = (scene: GQL.SlimSceneDataFragment) => {
+      return scene.files.reduce((prev: number, f) => Math.max(prev, f.size), 0);
+    };
+    // Find scene object with minimum total size
+    return group.reduce((smallest, scene) => {
+      const smallestSize = totalSize(smallest);
+      const currentSize = totalSize(scene);
+      return currentSize < smallestSize ? scene : smallest;
+    });
+  };
+
   const findLargestResolutionScene = (group: GQL.SlimSceneDataFragment[]) => {
     // Get maximum resolution of a scene
     const sceneResolution = (scene: GQL.SlimSceneDataFragment) => {
@@ -269,6 +282,26 @@ export const SceneDuplicateChecker: React.FC = () => {
       const largest = findLargestScene(group);
       group.forEach((scene) => {
         if (scene !== largest) {
+          checkedArray[scene.id] = true;
+        }
+      });
+    });
+
+    setCheckedScenes(checkedArray);
+  };
+
+  const onSelectSmallestClick = () => {
+    setSelectedScenes([]);
+    const checkedArray: Record<string, boolean> = {};
+
+    filteredScenes.forEach((group) => {
+      if (chkSafeSelect && !checkSameCodec(group)) {
+        return;
+      }
+      // Find smallest scene in group
+      const smallest = findSmallestScene(group);
+      group.forEach((scene) => {
+        if (scene !== smallest) {
           checkedArray[scene.id] = true;
         }
       });
@@ -776,6 +809,12 @@ export const SceneDuplicateChecker: React.FC = () => {
                     <Dropdown.Item onClick={() => onSelectLargestClick()}>
                       {intl.formatMessage({
                         id: "dupe_check.select_all_but_largest_file",
+                      })}
+                    </Dropdown.Item>
+
+                    <Dropdown.Item onClick={() => onSelectSmallestClick()}>
+                      {intl.formatMessage({
+                        id: "dupe_check.select_all_but_smallest_file",
                       })}
                     </Dropdown.Item>
 
