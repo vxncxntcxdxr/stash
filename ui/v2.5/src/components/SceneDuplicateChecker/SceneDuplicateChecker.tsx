@@ -49,6 +49,8 @@ import { FileSize } from "../Shared/FileSize";
 const CLASSNAME = "duplicate-checker";
 
 const defaultDurationDiff = "1";
+// Preferred codec used until the user picks one, when it is present in the results
+const defaultSelectedCodec = "hevc";
 
 function getGroupTotalSize(group: GQL.SlimSceneDataFragment[]) {
   // Sum all file sizes across all scenes in the group
@@ -137,6 +139,22 @@ export const SceneDuplicateChecker: React.FC = () => {
       );
     });
   }, [scenes.length]);
+
+  // Detect the codecs actually present in the duplicate results, so the
+  // preferred-codec dropdown only offers codecs that exist in the library.
+  const codecOptions = useMemo(() => {
+    const codecs = scenes
+      .flat()
+      .map((scene) => scene.files[0]?.video_codec)
+      .filter((codec): codec is string => !!codec);
+    return Array.from(new Set(codecs)).sort();
+  }, [scenes]);
+
+  // Fall back to the default codec when present, otherwise the first detected one.
+  const requestedCodec = query.get("selectedCodec") ?? defaultSelectedCodec;
+  const selectedCodec = codecOptions.includes(requestedCodec)
+    ? requestedCodec
+    : codecOptions[0];
 
   if (loading) return <LoadingIndicator />;
   if (!data) return <ErrorMessage error="Error searching for duplicates." />;
@@ -302,6 +320,30 @@ export const SceneDuplicateChecker: React.FC = () => {
       const smallest = findSmallestScene(group);
       group.forEach((scene) => {
         if (scene !== smallest) {
+          checkedArray[scene.id] = true;
+        }
+      });
+    });
+
+    setCheckedScenes(checkedArray);
+  };
+
+  const onSelectCodecClick = () => {
+    setSelectedScenes([]);
+    const checkedArray: Record<string, boolean> = {};
+
+    filteredScenes.forEach((group) => {
+      // Only act on groups that contain a scene with the preferred codec;
+      // otherwise there is nothing to keep, so select nothing.
+      const hasPreferred = group.some(
+        (scene) => scene.files[0]?.video_codec === selectedCodec
+      );
+      if (!hasPreferred) {
+        return;
+      }
+      // Select every scene whose codec is not the preferred one.
+      group.forEach((scene) => {
+        if (scene.files[0]?.video_codec !== selectedCodec) {
           checkedArray[scene.id] = true;
         }
       });
@@ -786,6 +828,33 @@ export const SceneDuplicateChecker: React.FC = () => {
               </Col>
             </Row>
           </Form.Group>
+
+          {codecOptions.length > 0 && (
+            <Form.Group>
+              <Row noGutters>
+                <Form.Label>
+                  <FormattedMessage id="dupe_check.preferred_codec_label" />
+                </Form.Label>
+                <Col xs="auto">
+                  <Form.Control
+                    as="select"
+                    onChange={(e) =>
+                      setQuery({ selectedCodec: e.currentTarget.value })
+                    }
+                    value={selectedCodec}
+                    className="input-control ml-4"
+                  >
+                    {codecOptions.map((codec) => (
+                      <option key={codec} value={codec}>
+                        {codec}
+                      </option>
+                    ))}
+                  </Form.Control>
+                </Col>
+              </Row>
+            </Form.Group>
+          )}
+
           <Form.Group>
             <Row noGutters>
               <Col xs="12">
@@ -817,6 +886,14 @@ export const SceneDuplicateChecker: React.FC = () => {
                         id: "dupe_check.select_all_but_smallest_file",
                       })}
                     </Dropdown.Item>
+
+                    {codecOptions.length > 0 && (
+                      <Dropdown.Item onClick={() => onSelectCodecClick()}>
+                        {intl.formatMessage({
+                          id: "dupe_check.select_all_but_preferred_codec",
+                        })}
+                      </Dropdown.Item>
+                    )}
 
                     <Dropdown.Item onClick={() => onSelectByAge(true)}>
                       {intl.formatMessage({
